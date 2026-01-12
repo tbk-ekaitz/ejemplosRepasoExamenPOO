@@ -1,0 +1,655 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Linq;
+using System.Windows.Forms;
+
+namespace GestionVehiculos
+{
+    // =========================================================================
+    // PUNTO DE ENTRADA
+    // =========================================================================
+    static class Program
+    {
+        [STAThread]
+        static void Main()
+        {
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.Run(new FPrincipal());
+        }
+    }
+
+    // =========================================================================
+    // CAPA DE PERSISTENCIA - INTERFAZ
+    // =========================================================================
+    public interface IPersistencia
+    {
+        bool AltaVehiculo(Vehiculo v);
+        Vehiculo BuscarVehiculo(string matricula);
+        List<Vehiculo> ListarVehiculos();
+    }
+
+    // =========================================================================
+    // CAPA DE PERSISTENCIA - IMPLEMENTACIÓN EN MEMORIA
+    // =========================================================================
+    public class PersistenciaMemoria : IPersistencia
+    {
+        private List<Vehiculo> vehiculos;
+
+        public PersistenciaMemoria()
+        {
+            vehiculos = new List<Vehiculo>();
+            
+            // Datos de ejemplo
+            vehiculos.Add(new Vehiculo("4789 ADC", 2004, 4000));
+            vehiculos.Add(new Vehiculo("2634 KLE", 2016, 8000));
+            vehiculos.Add(new Vehiculo("7688 FRN", 2010, 9000));
+        }
+
+        public bool AltaVehiculo(Vehiculo v)
+        {
+            // Verifica si ya existe
+            if (BuscarVehiculo(v.Matricula) != null)
+                return false;
+            
+            vehiculos.Add(v);
+            return true;
+        }
+
+        public Vehiculo BuscarVehiculo(string matricula)
+        {
+            foreach (Vehiculo v in vehiculos)
+            {
+                if (v.Matricula == matricula)
+                    return v;
+            }
+            return null;
+        }
+
+        public List<Vehiculo> ListarVehiculos()
+        {
+            return new List<Vehiculo>(vehiculos);
+        }
+    }
+
+    // =========================================================================
+    // CAPA DE NEGOCIO - CLASE VEHICULO
+    // =========================================================================
+    public class Vehiculo
+    {
+        public string Matricula { get; set; }
+        public int Anio { get; set; }
+        public decimal Precio { get; set; }
+
+        public Vehiculo(string matricula, int anio, decimal precio)
+        {
+            this.Matricula = matricula;
+            this.Anio = anio;
+            this.Precio = precio;
+        }
+
+        public override string ToString()
+        {
+            return string.Format("Matricula: {0}; Año: {1}; Precio: {2}", 
+                Matricula, Anio, Precio);
+        }
+    }
+
+    // =========================================================================
+    // CAPA DE NEGOCIO - GESTIÓN DE VEHÍCULOS
+    // =========================================================================
+    public class GestionVehiculos
+    {
+        private IPersistencia persistencia;
+
+        public GestionVehiculos(IPersistencia persistencia)
+        {
+            this.persistencia = persistencia;
+        }
+
+        // Validación + Alta
+        public string AltaVehiculo(string matricula, int anio, decimal precio)
+        {
+            // Validaciones
+            if (string.IsNullOrWhiteSpace(matricula))
+                return "Error: La matrícula no puede estar vacía";
+            
+            if (anio < 1950 || anio > 2020)
+                return "Error: El año debe estar entre 1950 y 2020";
+            
+            if (precio <= 0)
+                return "Error: El precio debe ser positivo";
+
+            // Crear vehículo
+            Vehiculo v = new Vehiculo(matricula, anio, precio);
+            
+            // Intentar dar de alta
+            if (persistencia.AltaVehiculo(v))
+                return "OK";
+            else
+                return "Error: El vehículo ya existe";
+        }
+
+        public Vehiculo BuscarVehiculo(string matricula)
+        {
+            return persistencia.BuscarVehiculo(matricula);
+        }
+
+        public List<Vehiculo> ListarVehiculos()
+        {
+            return persistencia.ListarVehiculos();
+        }
+
+        // Listados ordenados
+        public List<Vehiculo> ListarPorMatricula()
+        {
+            List<Vehiculo> lista = ListarVehiculos();
+            lista.Sort(delegate(Vehiculo v1, Vehiculo v2)
+            {
+                return v1.Matricula.CompareTo(v2.Matricula);
+            });
+            return lista;
+        }
+
+        public List<Vehiculo> ListarPorAnio()
+        {
+            List<Vehiculo> lista = ListarVehiculos();
+            lista.Sort(delegate(Vehiculo v1, Vehiculo v2)
+            {
+                return v1.Anio.CompareTo(v2.Anio);
+            });
+            return lista;
+        }
+
+        public List<Vehiculo> ListarPorPrecio()
+        {
+            List<Vehiculo> lista = ListarVehiculos();
+            lista.Sort(delegate(Vehiculo v1, Vehiculo v2)
+            {
+                return v1.Precio.CompareTo(v2.Precio);
+            });
+            return lista;
+        }
+    }
+
+    // =========================================================================
+    // CAPA DE PRESENTACIÓN - FORMULARIO PRINCIPAL
+    // =========================================================================
+    public partial class FPrincipal : Form
+    {
+        private GestionVehiculos gestion;
+        private GroupBox groupBox1;
+        private Button btAlta;
+        private Button btBusqueda;
+        private Button btListado;
+        private Button btSalir;
+        
+        // ToolStrip y StatusStrip
+        private MenuStrip menuPrincipal;
+        private ToolStrip toolStripPrincipal;
+        private StatusStrip statusStripPrincipal;
+        private ToolStripStatusLabel lblEstado;
+        private ContextMenuStrip menuContextual;
+
+        public FPrincipal()
+        {
+            // Inicializar capa de negocio
+            IPersistencia persistencia = new PersistenciaMemoria();
+            gestion = new GestionVehiculos(persistencia);
+            
+            InitializeComponent();
+            InicializarBarras();
+        }
+
+        private void InitializeComponent()
+        {
+            this.Text = "Gestión de vehículos";
+            this.Size = new Size(400, 350);
+            this.StartPosition = FormStartPosition.CenterScreen;
+
+            // GroupBox
+            groupBox1 = new GroupBox();
+            groupBox1.Text = "Vehiculos";
+            groupBox1.Location = new Point(20, 50);
+            groupBox1.Size = new Size(340, 220);
+
+            // Botones
+            btAlta = new Button();
+            btAlta.Text = "Alta";
+            btAlta.Size = new Size(120, 35);
+            btAlta.Location = new Point(110, 30);
+            btAlta.Click += BtAlta_Click;
+
+            btBusqueda = new Button();
+            btBusqueda.Text = "Búsqueda por\nmatrícula";
+            btBusqueda.Size = new Size(120, 35);
+            btBusqueda.Location = new Point(110, 75);
+            btBusqueda.Click += BtBusqueda_Click;
+
+            btListado = new Button();
+            btListado.Text = "Listados";
+            btListado.Size = new Size(120, 35);
+            btListado.Location = new Point(110, 120);
+            btListado.Click += BtListado_Click;
+
+            btSalir = new Button();
+            btSalir.Text = "Salir";
+            btSalir.Size = new Size(100, 30);
+            btSalir.Location = new Point(140, 280);
+            btSalir.Click += delegate(object s, EventArgs e) { this.Close(); };
+
+            groupBox1.Controls.Add(btAlta);
+            groupBox1.Controls.Add(btBusqueda);
+            groupBox1.Controls.Add(btListado);
+
+            this.Controls.Add(groupBox1);
+            this.Controls.Add(btSalir);
+        }
+
+        private void InicializarBarras()
+        {
+            // =====================================================================
+            // MENUSTRIP - Menú principal
+            // =====================================================================
+            menuPrincipal = new MenuStrip();
+            
+            ToolStripMenuItem menuArchivo = new ToolStripMenuItem("&Archivo");
+            ToolStripMenuItem menuNuevo = new ToolStripMenuItem("&Nuevo", null, BtAlta_Click);
+            menuNuevo.ShortcutKeys = Keys.Control | Keys.N;
+            ToolStripMenuItem menuSalir = new ToolStripMenuItem("&Salir", null, 
+                delegate(object s, EventArgs e) { this.Close(); });
+            menuArchivo.DropDownItems.Add(menuNuevo);
+            menuArchivo.DropDownItems.Add(new ToolStripSeparator());
+            menuArchivo.DropDownItems.Add(menuSalir);
+
+            ToolStripMenuItem menuVer = new ToolStripMenuItem("&Ver");
+            ToolStripMenuItem menuVerBarra = new ToolStripMenuItem("Barra de &estado");
+            menuVerBarra.CheckOnClick = true;
+            menuVerBarra.Checked = true;
+            menuVerBarra.Click += delegate(object s, EventArgs e)
+            {
+                statusStripPrincipal.Visible = menuVerBarra.Checked;
+            };
+            menuVer.DropDownItems.Add(menuVerBarra);
+
+            menuPrincipal.Items.Add(menuArchivo);
+            menuPrincipal.Items.Add(menuVer);
+
+            // Eventos MouseEnter para mostrar ayuda
+            menuArchivo.MouseEnter += delegate(object s, EventArgs e)
+            {
+                lblEstado.Text = "Operaciones de archivo";
+            };
+            menuArchivo.MouseLeave += delegate(object s, EventArgs e)
+            {
+                lblEstado.Text = "Listo";
+            };
+
+            // =====================================================================
+            // TOOLSTRIP - Barra de herramientas
+            // =====================================================================
+            toolStripPrincipal = new ToolStrip();
+            
+            ToolStripButton btnNuevo = new ToolStripButton("Nuevo");
+            btnNuevo.DisplayStyle = ToolStripItemDisplayStyle.ImageAndText;
+            btnNuevo.Click += BtAlta_Click;
+            
+            ToolStripButton btnBuscar = new ToolStripButton("Buscar");
+            btnBuscar.Click += BtBusqueda_Click;
+            
+            ToolStripSeparator separador = new ToolStripSeparator();
+            
+            ToolStripButton btnListar = new ToolStripButton("Listar");
+            btnListar.Click += BtListado_Click;
+
+            toolStripPrincipal.Items.Add(btnNuevo);
+            toolStripPrincipal.Items.Add(btnBuscar);
+            toolStripPrincipal.Items.Add(separador);
+            toolStripPrincipal.Items.Add(btnListar);
+
+            // =====================================================================
+            // STATUSSTRIP - Barra de estado
+            // =====================================================================
+            statusStripPrincipal = new StatusStrip();
+            
+            lblEstado = new ToolStripStatusLabel();
+            lblEstado.Text = "Listo";
+            lblEstado.Spring = true;  // Rellena el espacio disponible
+            lblEstado.TextAlign = ContentAlignment.MiddleLeft;
+
+            ToolStripStatusLabel lblFijo = new ToolStripStatusLabel();
+            lblFijo.Text = "Gestión de Vehículos v1.0";
+            
+            statusStripPrincipal.Items.Add(lblEstado);
+            statusStripPrincipal.Items.Add(lblFijo);
+
+            // =====================================================================
+            // CONTEXTMENUSTRIP - Menú contextual
+            // =====================================================================
+            menuContextual = new ContextMenuStrip();
+            
+            ToolStripMenuItem itemNuevo = new ToolStripMenuItem("Nuevo vehículo", null, BtAlta_Click);
+            ToolStripMenuItem itemBuscar = new ToolStripMenuItem("Buscar", null, BtBusqueda_Click);
+            ToolStripMenuItem itemListar = new ToolStripMenuItem("Listar", null, BtListado_Click);
+            
+            menuContextual.Items.Add(itemNuevo);
+            menuContextual.Items.Add(itemBuscar);
+            menuContextual.Items.Add(itemListar);
+
+            // Asignar menú contextual al formulario
+            this.ContextMenuStrip = menuContextual;
+
+            // Agregar controles al formulario
+            this.MainMenuStrip = menuPrincipal;
+            this.Controls.Add(menuPrincipal);
+            this.Controls.Add(toolStripPrincipal);
+            this.Controls.Add(statusStripPrincipal);
+        }
+
+        // =====================================================================
+        // EVENTOS DE LOS BOTONES
+        // =====================================================================
+        private void BtAlta_Click(object sender, EventArgs e)
+        {
+            lblEstado.Text = "Abriendo formulario de alta...";
+            FAlta formAlta = new FAlta(gestion);
+            formAlta.ShowDialog();
+            lblEstado.Text = "Listo";
+        }
+
+        private void BtBusqueda_Click(object sender, EventArgs e)
+        {
+            lblEstado.Text = "Abriendo formulario de búsqueda...";
+            FBusqueda formBusqueda = new FBusqueda(gestion);
+            formBusqueda.ShowDialog();
+            lblEstado.Text = "Listo";
+        }
+
+        private void BtListado_Click(object sender, EventArgs e)
+        {
+            lblEstado.Text = "Abriendo formulario de listados...";
+            FListado formListado = new FListado(gestion);
+            formListado.ShowDialog();
+            lblEstado.Text = "Listo";
+        }
+    }
+
+    // =========================================================================
+    // FORMULARIO DE ALTA
+    // =========================================================================
+    public partial class FAlta : Form
+    {
+        private GestionVehiculos gestion;
+        private Label lblMatricula, lblAnio, lblPrecio;
+        private TextBox txtMatricula, txtAnio, txtPrecio;
+        private Button btnDarAlta, btnCancelar;
+
+        public FAlta(GestionVehiculos gestion)
+        {
+            this.gestion = gestion;
+            InitializeComponent();
+        }
+
+        private void InitializeComponent()
+        {
+            this.Text = "Datos del vehí...";
+            this.Size = new Size(350, 220);
+            this.StartPosition = FormStartPosition.CenterParent;
+            this.FormBorderStyle = FormBorderStyle.FixedDialog;
+            this.MaximizeBox = false;
+
+            // Labels
+            lblMatricula = new Label();
+            lblMatricula.Text = "Matrícula:";
+            lblMatricula.Location = new Point(30, 30);
+            lblMatricula.AutoSize = true;
+
+            lblAnio = new Label();
+            lblAnio.Text = "Año:";
+            lblAnio.Location = new Point(30, 70);
+            lblAnio.AutoSize = true;
+
+            lblPrecio = new Label();
+            lblPrecio.Text = "Precio:";
+            lblPrecio.Location = new Point(30, 110);
+            lblPrecio.AutoSize = true;
+
+            // TextBoxes
+            txtMatricula = new TextBox();
+            txtMatricula.Location = new Point(130, 27);
+            txtMatricula.Size = new Size(150, 20);
+
+            txtAnio = new TextBox();
+            txtAnio.Location = new Point(130, 67);
+            txtAnio.Size = new Size(150, 20);
+
+            txtPrecio = new TextBox();
+            txtPrecio.Location = new Point(130, 107);
+            txtPrecio.Size = new Size(150, 20);
+
+            // Botones
+            btnDarAlta = new Button();
+            btnDarAlta.Text = "Dar alta";
+            btnDarAlta.Location = new Point(70, 145);
+            btnDarAlta.Size = new Size(80, 25);
+            btnDarAlta.Click += BtnDarAlta_Click;
+
+            btnCancelar = new Button();
+            btnCancelar.Text = "Cancelar";
+            btnCancelar.Location = new Point(170, 145);
+            btnCancelar.Size = new Size(80, 25);
+            btnCancelar.Click += delegate(object s, EventArgs e) { this.Close(); };
+
+            this.Controls.Add(lblMatricula);
+            this.Controls.Add(lblAnio);
+            this.Controls.Add(lblPrecio);
+            this.Controls.Add(txtMatricula);
+            this.Controls.Add(txtAnio);
+            this.Controls.Add(txtPrecio);
+            this.Controls.Add(btnDarAlta);
+            this.Controls.Add(btnCancelar);
+        }
+
+        private void BtnDarAlta_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                string matricula = txtMatricula.Text.Trim();
+                int anio = int.Parse(txtAnio.Text);
+                decimal precio = decimal.Parse(txtPrecio.Text);
+
+                string resultado = gestion.AltaVehiculo(matricula, anio, precio);
+
+                if (resultado == "OK")
+                {
+                    MessageBox.Show("Vehículo dado de alta correctamente", 
+                        "Éxito", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    this.Close();
+                }
+                else
+                {
+                    MessageBox.Show(resultado, "Error", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (FormatException)
+            {
+                MessageBox.Show("Error: Año y precio deben ser números válidos", 
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+    }
+
+    // =========================================================================
+    // FORMULARIO DE BÚSQUEDA
+    // =========================================================================
+    public partial class FBusqueda : Form
+    {
+        private GestionVehiculos gestion;
+        private Label lblMatricula, lblAnio, lblPrecio;
+        private ComboBox cboMatricula;
+        private TextBox txtAnio, txtPrecio;
+
+        public FBusqueda(GestionVehiculos gestion)
+        {
+            this.gestion = gestion;
+            InitializeComponent();
+            CargarMatriculas();
+        }
+
+        private void InitializeComponent()
+        {
+            this.Text = "Búsqueda de vehícu...";
+            this.Size = new Size(350, 200);
+            this.StartPosition = FormStartPosition.CenterParent;
+            this.FormBorderStyle = FormBorderStyle.FixedDialog;
+
+            // Labels
+            lblMatricula = new Label();
+            lblMatricula.Text = "Matrícula";
+            lblMatricula.Location = new Point(30, 30);
+            lblMatricula.AutoSize = true;
+
+            lblAnio = new Label();
+            lblAnio.Text = "Año";
+            lblAnio.Location = new Point(30, 70);
+            lblAnio.AutoSize = true;
+
+            lblPrecio = new Label();
+            lblPrecio.Text = "Precio";
+            lblPrecio.Location = new Point(30, 110);
+            lblPrecio.AutoSize = true;
+
+            // ComboBox para matrícula
+            cboMatricula = new ComboBox();
+            cboMatricula.Location = new Point(130, 27);
+            cboMatricula.Size = new Size(150, 20);
+            cboMatricula.DropDownStyle = ComboBoxStyle.DropDownList;
+            cboMatricula.SelectedIndexChanged += CboMatricula_SelectedIndexChanged;
+
+            // TextBoxes (solo lectura)
+            txtAnio = new TextBox();
+            txtAnio.Location = new Point(130, 67);
+            txtAnio.Size = new Size(150, 20);
+            txtAnio.ReadOnly = true;
+
+            txtPrecio = new TextBox();
+            txtPrecio.Location = new Point(130, 107);
+            txtPrecio.Size = new Size(150, 20);
+            txtPrecio.ReadOnly = true;
+
+            this.Controls.Add(lblMatricula);
+            this.Controls.Add(lblAnio);
+            this.Controls.Add(lblPrecio);
+            this.Controls.Add(cboMatricula);
+            this.Controls.Add(txtAnio);
+            this.Controls.Add(txtPrecio);
+        }
+
+        private void CargarMatriculas()
+        {
+            List<Vehiculo> vehiculos = gestion.ListarVehiculos();
+            cboMatricula.Items.Clear();
+            
+            foreach (Vehiculo v in vehiculos)
+            {
+                cboMatricula.Items.Add(v.Matricula);
+            }
+
+            if (cboMatricula.Items.Count > 0)
+                cboMatricula.SelectedIndex = 0;
+        }
+
+        private void CboMatricula_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (cboMatricula.SelectedItem != null)
+            {
+                string matricula = cboMatricula.SelectedItem.ToString();
+                Vehiculo v = gestion.BuscarVehiculo(matricula);
+                
+                if (v != null)
+                {
+                    txtAnio.Text = v.Anio.ToString();
+                    txtPrecio.Text = v.Precio.ToString();
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // FORMULARIO DE LISTADO
+    // =========================================================================
+    public partial class FListado : Form
+    {
+        private GestionVehiculos gestion;
+        private Button btnMatricula, btnAnio, btnPrecio;
+        private ListBox lstVehiculos;
+
+        public FListado(GestionVehiculos gestion)
+        {
+            this.gestion = gestion;
+            InitializeComponent();
+        }
+
+        private void InitializeComponent()
+        {
+            this.Text = "Listado ordenado de vehículos";
+            this.Size = new Size(500, 400);
+            this.StartPosition = FormStartPosition.CenterParent;
+
+            // Botones
+            btnMatricula = new Button();
+            btnMatricula.Text = "Por matrícula";
+            btnMatricula.Location = new Point(30, 20);
+            btnMatricula.Size = new Size(120, 30);
+            btnMatricula.Click += BtnMatricula_Click;
+
+            btnAnio = new Button();
+            btnAnio.Text = "Por año";
+            btnAnio.Location = new Point(170, 20);
+            btnAnio.Size = new Size(120, 30);
+            btnAnio.Click += BtnAnio_Click;
+
+            btnPrecio = new Button();
+            btnPrecio.Text = "Por precio";
+            btnPrecio.Location = new Point(310, 20);
+            btnPrecio.Size = new Size(120, 30);
+            btnPrecio.Click += BtnPrecio_Click;
+
+            // ListBox
+            lstVehiculos = new ListBox();
+            lstVehiculos.Location = new Point(30, 70);
+            lstVehiculos.Size = new Size(430, 270);
+
+            this.Controls.Add(btnMatricula);
+            this.Controls.Add(btnAnio);
+            this.Controls.Add(btnPrecio);
+            this.Controls.Add(lstVehiculos);
+        }
+
+        private void BtnMatricula_Click(object sender, EventArgs e)
+        {
+            MostrarListado(gestion.ListarPorMatricula());
+        }
+
+        private void BtnAnio_Click(object sender, EventArgs e)
+        {
+            MostrarListado(gestion.ListarPorAnio());
+        }
+
+        private void BtnPrecio_Click(object sender, EventArgs e)
+        {
+            MostrarListado(gestion.ListarPorPrecio());
+        }
+
+        private void MostrarListado(List<Vehiculo> vehiculos)
+        {
+            lstVehiculos.Items.Clear();
+            foreach (Vehiculo v in vehiculos)
+            {
+                lstVehiculos.Items.Add(v.ToString());
+            }
+        }
+    }
+}
