@@ -1,0 +1,404 @@
+using System;
+using System.Drawing;
+using System.Windows.Forms;
+
+namespace RepasoWindowsFormsMDI
+{
+    // ============================================================================
+    // PUNTO DE ENTRADA DE LA APLICACIÓN
+    // ============================================================================
+    static class Program
+    {
+        [STAThread]
+        static void Main()
+        {
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.Run(new FormularioPadre());
+        }
+    }
+
+    // ============================================================================
+    // FORMULARIO PADRE MDI
+    // ============================================================================
+    // Hereda de: Object -> Component -> Control -> ContainerControl -> Form
+    public class FormularioPadre : Form
+    {
+        private MenuStrip menuPrincipal;
+        private ToolStripMenuItem menuArchivo;
+        private ToolStripMenuItem menuNuevoDocumento;
+        private ToolStripMenuItem menuSalir;
+        private ToolStripMenuItem menuVentana;
+        private ToolStripMenuItem menuCascada;
+        private ToolStripMenuItem menuHorizontal;
+        private ToolStripMenuItem menuVertical;
+        private ToolStripMenuItem menuArreglarIconos;
+        private StatusStrip barraEstado;
+        private ToolStripStatusLabel lblEstado;
+
+        private int contadorDocumentos = 0;
+
+        public FormularioPadre()
+        {
+            InicializarComponentes();
+            ConfigurarEventosCicloVida();
+        }
+
+        private void InicializarComponentes()
+        {
+            // ====================================================================
+            // CONFIGURACIÓN MDI - Propiedad clave para el formulario contenedor
+            // ====================================================================
+            this.IsMdiContainer = true;
+            this.Text = "Aplicación MDI - Repaso Completo";
+            this.Size = new Size(1000, 700);
+            this.StartPosition = FormStartPosition.CenterScreen;
+
+            // ====================================================================
+            // CREACIÓN DEL MENÚ PRINCIPAL (MenuStrip)
+            // ====================================================================
+            menuPrincipal = new MenuStrip();
+
+            // Menú Archivo
+            menuArchivo = new ToolStripMenuItem("&Archivo");
+            menuNuevoDocumento = new ToolStripMenuItem("&Nuevo Documento", null, MenuNuevoDocumento_Click);
+            menuNuevoDocumento.ShortcutKeys = Keys.Control | Keys.N;
+            menuSalir = new ToolStripMenuItem("&Salir", null, MenuSalir_Click);
+            menuArchivo.DropDownItems.Add(menuNuevoDocumento);
+            menuArchivo.DropDownItems.Add(new ToolStripSeparator());
+            menuArchivo.DropDownItems.Add(menuSalir);
+
+            // Menú Ventana
+            menuVentana = new ToolStripMenuItem("&Ventana");
+            menuCascada = new ToolStripMenuItem("&Cascada", null, (s, e) => LayoutMdi(MdiLayout.Cascade));
+            menuHorizontal = new ToolStripMenuItem("Mosaico &Horizontal", null, (s, e) => LayoutMdi(MdiLayout.TileHorizontal));
+            menuVertical = new ToolStripMenuItem("Mosaico &Vertical", null, (s, e) => LayoutMdi(MdiLayout.TileVertical));
+            menuArreglarIconos = new ToolStripMenuItem("&Arreglar Iconos", null, (s, e) => LayoutMdi(MdiLayout.ArrangeIcons));
+            
+            menuVentana.DropDownItems.Add(menuCascada);
+            menuVentana.DropDownItems.Add(menuHorizontal);
+            menuVentana.DropDownItems.Add(menuVertical);
+            menuVentana.DropDownItems.Add(menuArreglarIconos);
+            menuVentana.DropDownItems.Add(new ToolStripSeparator());
+
+            // ====================================================================
+            // CONFIGURACIÓN MdiWindowListItem - Lista automática de ventanas
+            // ====================================================================
+            menuPrincipal.MdiWindowListItem = menuVentana;
+
+            menuPrincipal.Items.Add(menuArchivo);
+            menuPrincipal.Items.Add(menuVentana);
+
+            // ====================================================================
+            // BARRA DE ESTADO
+            // ====================================================================
+            barraEstado = new StatusStrip();
+            lblEstado = new ToolStripStatusLabel("Listo - Sin documentos abiertos");
+            barraEstado.Items.Add(lblEstado);
+
+            // Agregar controles al formulario
+            this.MainMenuStrip = menuPrincipal;
+            this.Controls.Add(menuPrincipal);
+            this.Controls.Add(barraEstado);
+
+            // ====================================================================
+            // EVENTO MdiChildActivate - Se dispara al cambiar ventana activa
+            // ====================================================================
+            this.MdiChildActivate += FormularioPadre_MdiChildActivate;
+        }
+
+        // ========================================================================
+        // CICLO DE VIDA DEL FORMULARIO - Eventos secuenciales
+        // ========================================================================
+        private void ConfigurarEventosCicloVida()
+        {
+            // 1. Load - Configuración inicial, reserva de recursos
+            this.Load += (s, e) =>
+            {
+                Console.WriteLine("[PADRE] Evento Load: Formulario cargado");
+                ActualizarEstado();
+            };
+
+            // 2. Activated - El formulario recibe el foco
+            this.Activated += (s, e) =>
+            {
+                Console.WriteLine("[PADRE] Evento Activated: Formulario tiene el foco");
+            };
+
+            // 3. Deactivated - El formulario pierde el foco
+            this.Deactivated += (s, e) =>
+            {
+                Console.WriteLine("[PADRE] Evento Deactivated: Formulario perdió el foco");
+            };
+
+            // 4. FormClosing - Antes de cerrarse (cancelable)
+            this.FormClosing += (s, e) =>
+            {
+                Console.WriteLine("[PADRE] Evento FormClosing: Formulario va a cerrarse");
+                
+                var resultado = MessageBox.Show(
+                    "¿Está seguro que desea salir?\n\nSe cerrarán todos los documentos abiertos.",
+                    "Confirmar Salida",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question
+                );
+
+                if (resultado == DialogResult.No)
+                {
+                    e.Cancel = true; // Cancelar el cierre
+                    Console.WriteLine("[PADRE] Cierre cancelado por el usuario");
+                }
+            };
+
+            // 5. FormClosed - Después de cerrarse (liberación de recursos)
+            this.FormClosed += (s, e) =>
+            {
+                Console.WriteLine("[PADRE] Evento FormClosed: Formulario cerrado, recursos liberados");
+            };
+        }
+
+        // ========================================================================
+        // GESTIÓN DE VENTANAS MDI
+        // ========================================================================
+        private void MenuNuevoDocumento_Click(object sender, EventArgs e)
+        {
+            contadorDocumentos++;
+            
+            // Crear nueva instancia del formulario hijo
+            FormularioHijo nuevoHijo = new FormularioHijo(contadorDocumentos);
+            
+            // ====================================================================
+            // ASIGNAR MdiParent - DEBE hacerse ANTES de Show()
+            // ====================================================================
+            nuevoHijo.MdiParent = this;
+            
+            // Mostrar el formulario hijo
+            nuevoHijo.Show();
+
+            ActualizarEstado();
+        }
+
+        private void MenuSalir_Click(object sender, EventArgs e)
+        {
+            this.Close();
+        }
+
+        // ========================================================================
+        // EVENTO MdiChildActivate - Gestión del hijo activo
+        // ========================================================================
+        private void FormularioPadre_MdiChildActivate(object sender, EventArgs e)
+        {
+            Console.WriteLine("[PADRE] Evento MdiChildActivate: Cambio en hijo activo");
+            ActualizarEstado();
+        }
+
+        // ========================================================================
+        // GESTIÓN DE VENTANAS - ActiveMdiChild y MdiChildren
+        // ========================================================================
+        private void ActualizarEstado()
+        {
+            // ActiveMdiChild: Referencia al hijo con foco (o null)
+            Form hijoActivo = this.ActiveMdiChild;
+            
+            // MdiChildren: Array con todos los hijos abiertos
+            int totalHijos = this.MdiChildren.Length;
+
+            if (hijoActivo != null)
+            {
+                lblEstado.Text = $"Activo: {hijoActivo.Text} | Total documentos: {totalHijos}";
+            }
+            else
+            {
+                if (totalHijos > 0)
+                    lblEstado.Text = $"Sin documento activo | Total documentos: {totalHijos}";
+                else
+                    lblEstado.Text = "Listo - Sin documentos abiertos";
+            }
+
+            // Habilitar/deshabilitar menús según haya documentos
+            menuVentana.Enabled = totalHijos > 0;
+        }
+    }
+
+    // ============================================================================
+    // FORMULARIO HIJO - Documento individual en MDI
+    // ============================================================================
+    public class FormularioHijo : Form
+    {
+        private RichTextBox txtEditor;
+        private Panel panelSuperior;
+        private Label lblInfo;
+        private Button btnGuardar;
+        private Button btnCerrar;
+
+        private int numeroDocumento;
+        private bool documentoModificado = false;
+
+        public FormularioHijo(int numero)
+        {
+            this.numeroDocumento = numero;
+            InicializarComponentes();
+            ConfigurarEventosCicloVida();
+        }
+
+        private void InicializarComponentes()
+        {
+            // Configuración básica del formulario hijo
+            this.Text = $"Documento {numeroDocumento}";
+            this.Size = new Size(600, 400);
+            this.Icon = SystemIcons.Application;
+
+            // ====================================================================
+            // PANEL SUPERIOR CON ANCHOR - Mantiene distancia a los bordes
+            // ====================================================================
+            panelSuperior = new Panel();
+            panelSuperior.Height = 50;
+            panelSuperior.Dock = DockStyle.Top; // Anclado arriba
+            panelSuperior.BackColor = Color.LightSteelBlue;
+
+            lblInfo = new Label();
+            lblInfo.Text = $"Documento {numeroDocumento} - Sin modificar";
+            lblInfo.AutoSize = true;
+            lblInfo.Location = new Point(10, 15);
+            lblInfo.Font = new Font("Segoe UI", 10, FontStyle.Bold);
+
+            btnGuardar = new Button();
+            btnGuardar.Text = "Guardar";
+            btnGuardar.Size = new Size(80, 30);
+            btnGuardar.Location = new Point(panelSuperior.Width - 180, 10);
+            btnGuardar.Anchor = AnchorStyles.Top | AnchorStyles.Right; // Se mantiene a la derecha
+            btnGuardar.Click += BtnGuardar_Click;
+            btnGuardar.Enabled = false;
+
+            btnCerrar = new Button();
+            btnCerrar.Text = "Cerrar";
+            btnCerrar.Size = new Size(80, 30);
+            btnCerrar.Location = new Point(panelSuperior.Width - 90, 10);
+            btnCerrar.Anchor = AnchorStyles.Top | AnchorStyles.Right; // Se mantiene a la derecha
+            btnCerrar.Click += (s, e) => this.Close();
+
+            panelSuperior.Controls.Add(lblInfo);
+            panelSuperior.Controls.Add(btnGuardar);
+            panelSuperior.Controls.Add(btnCerrar);
+
+            // ====================================================================
+            // RICHTEXTBOX CON DOCK FILL - Ocupa todo el espacio disponible
+            // ====================================================================
+            txtEditor = new RichTextBox();
+            txtEditor.Dock = DockStyle.Fill; // Llena el resto del formulario
+            txtEditor.Font = new Font("Consolas", 11);
+            txtEditor.TextChanged += TxtEditor_TextChanged;
+
+            // Texto inicial de ejemplo
+            txtEditor.Text = $"=== DOCUMENTO {numeroDocumento} ===\n\n" +
+                           "Este es un ejemplo de aplicación MDI.\n\n" +
+                           "Conceptos demostrados:\n" +
+                           "• Jerarquía de clases (Object->Component->Control->Form)\n" +
+                           "• Ciclo de vida (Load, Activated, FormClosing, FormClosed)\n" +
+                           "• Arquitectura MDI (IsMdiContainer, MdiParent)\n" +
+                           "• Gestión de ventanas (ActiveMdiChild, MdiChildren)\n" +
+                           "• LayoutMdi (Cascade, TileHorizontal, TileVertical)\n" +
+                           "• MenuStrip con MdiWindowListItem\n" +
+                           "• Dock y Anchor para diseño responsive\n\n" +
+                           "Escribe algo aquí para modificar el documento...";
+
+            // Agregar controles al formulario
+            this.Controls.Add(txtEditor);
+            this.Controls.Add(panelSuperior);
+        }
+
+        // ========================================================================
+        // CICLO DE VIDA DEL FORMULARIO HIJO
+        // ========================================================================
+        private void ConfigurarEventosCicloVida()
+        {
+            this.Load += (s, e) =>
+            {
+                Console.WriteLine($"[HIJO {numeroDocumento}] Evento Load: Documento cargado");
+            };
+
+            this.Activated += (s, e) =>
+            {
+                Console.WriteLine($"[HIJO {numeroDocumento}] Evento Activated: Documento activo");
+                this.BackColor = Color.White; // Indicador visual
+            };
+
+            this.Deactivated += (s, e) =>
+            {
+                Console.WriteLine($"[HIJO {numeroDocumento}] Evento Deactivated: Documento inactivo");
+                this.BackColor = Color.WhiteSmoke; // Indicador visual
+            };
+
+            this.FormClosing += (s, e) =>
+            {
+                Console.WriteLine($"[HIJO {numeroDocumento}] Evento FormClosing");
+                
+                if (documentoModificado)
+                {
+                    var resultado = MessageBox.Show(
+                        $"El documento {numeroDocumento} tiene cambios sin guardar.\n\n¿Desea cerrarlo de todas formas?",
+                        "Documento Modificado",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning
+                    );
+
+                    if (resultado == DialogResult.No)
+                    {
+                        e.Cancel = true; // Cancelar el cierre
+                        Console.WriteLine($"[HIJO {numeroDocumento}] Cierre cancelado");
+                    }
+                }
+            };
+
+            this.FormClosed += (s, e) =>
+            {
+                Console.WriteLine($"[HIJO {numeroDocumento}] Evento FormClosed: Recursos liberados");
+            };
+        }
+
+        // ========================================================================
+        // GESTIÓN DE EVENTOS
+        // ========================================================================
+        private void TxtEditor_TextChanged(object sender, EventArgs e)
+        {
+            if (!documentoModificado)
+            {
+                documentoModificado = true;
+                this.Text = $"Documento {numeroDocumento} *"; // Asterisco indica modificado
+                lblInfo.Text = $"Documento {numeroDocumento} - Modificado";
+                lblInfo.ForeColor = Color.DarkRed;
+                btnGuardar.Enabled = true;
+            }
+        }
+
+        private void BtnGuardar_Click(object sender, EventArgs e)
+        {
+            // Simulación de guardado
+            documentoModificado = false;
+            this.Text = $"Documento {numeroDocumento}";
+            lblInfo.Text = $"Documento {numeroDocumento} - Guardado";
+            lblInfo.ForeColor = Color.DarkGreen;
+            btnGuardar.Enabled = false;
+
+            MessageBox.Show(
+                $"Documento {numeroDocumento} guardado correctamente.\n\n" +
+                $"Caracteres: {txtEditor.Text.Length}",
+                "Guardado Exitoso",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information
+            );
+
+            // Restaurar color después de 2 segundos
+            var timer = new Timer();
+            timer.Interval = 2000;
+            timer.Tick += (s, ev) =>
+            {
+                lblInfo.ForeColor = Color.Black;
+                lblInfo.Text = $"Documento {numeroDocumento} - Sin modificar";
+                timer.Stop();
+                timer.Dispose();
+            };
+            timer.Start();
+        }
+    }
+}
